@@ -20,7 +20,9 @@ def ensure_datafile():
 
 def load_data():
     ensure_datafile()
-    df = pd.read_csv(DATA_FILE, parse_dates=["date"], dayfirst=True)
+    df = pd.read_csv(DATA_FILE)
+    # Convert 'date' column to datetime
+    df['date'] = pd.to_datetime(df['date'], errors='coerce', dayfirst=True)
     return df.drop_duplicates(subset=["username", "date"], keep="last")
 
 def save_entry(entry):
@@ -100,29 +102,26 @@ if not st.session_state.logged_in:
             st.error("Please enter your name!")
     st.stop()
 
-# ---------- DASHBOARD PAGE ----------
+# ------------------ DASHBOARD PAGE ------------------
 username = st.session_state.username
 date_input = st.session_state.date_input
 data = load_data()
 
-st.markdown(f"""
-<div style='background-color:#e0f7fa; padding:25px; border-radius:12px; margin-bottom:20px;'>
-    <h2 style='color:#FF4500; font-size:36px; margin-bottom:5px;'>Welcome, <span style='color:#FFD700;'>{username}</span>! 🎉</h2>
-    <h3 style='color:#FF8C00; font-size:28px; margin:0;'>Date: <span style='color:#FF8C00;'>{date_input.strftime('%B %d, %Y')}</span></h3>
-</div>
-""", unsafe_allow_html=True)
+# Initialize dashboard subpage
+if "dashboard_page" not in st.session_state:
+    st.session_state.dashboard_page = "Today's Check-in"
 
-st.markdown("""
-<div style='background-color:#e0f7fa; padding:12px; border-radius:12px; margin-bottom:20px;'>
-    <label style='color:#00796b; font-weight:bold; font-size:22px;'>Choose an option:</label>
-</div>
-""", unsafe_allow_html=True)
-
+# Selectbox with session state
 option = st.selectbox(
     "",
     ["Today's Check-in", "Weekly Overview", "Leaderboard", "View Past Entries",
-     "Clear All Past Entries", "Switch Account", "Exit App"]
+     "Clear All Past Entries", "Switch Account", "Exit App"],
+    index=["Today's Check-in", "Weekly Overview", "Leaderboard", "View Past Entries",
+           "Clear All Past Entries", "Switch Account", "Exit App"].index(st.session_state.dashboard_page)
 )
+
+# Update session state
+st.session_state.dashboard_page = option
 
 # ------------------ TODAY'S CHECK-IN ------------------
 if option == "Today's Check-in":
@@ -135,7 +134,7 @@ if option == "Today's Check-in":
         st.markdown("- Screen Time: <=3")
         st.markdown("- Stress Level: <=4")
     with c2:
-        if today_entry.empty or not st.session_state.checkin_done:
+        if today_entry.empty or not st.session_state.get("checkin_done", False):
             sleep_hours = st.number_input("Sleep Hours (0-12)", min_value=0, max_value=12, value=8)
             screen_time = st.number_input("Screen Time in hours (0-24)", min_value=0, max_value=24, value=3)
             stress_level = st.slider("Stress Level (0-10)", min_value=0, max_value=10, value=5)
@@ -160,8 +159,11 @@ if option == "Today's Check-in":
                 st.balloons()
                 st.success("✅ Today's check-in saved!")
                 st.session_state.checkin_done = True
-        if st.session_state.checkin_done or not today_entry.empty:
-            row = today_entry.iloc[-1] if not today_entry.empty else entry
+                today_entry = pd.DataFrame([entry])  # Update to show analysis immediately
+                st.session_state.dashboard_page = "Today's Check-in"  # Keep selectbox on this page
+
+        if st.session_state.get("checkin_done", False) or not today_entry.empty:
+            row = today_entry.iloc[-1]
             st.subheader("📊 Today’s Analysis")
             c1, c2, c3, c4 = st.columns(4)
             with c1: render_card("Stress", row["stress_level"], color="#FF4B4B", emoji="😣")
@@ -272,7 +274,7 @@ elif option == "View Past Entries":
             st.markdown(f"""
             <div style='background-color:#1a1a1a; padding:10px; border-radius:10px; margin-bottom:5px;'>
                 <h4 style='color:red; margin:0;'>{i}. {date_str}</h4>
-                <p style='color:white; margin:2px 0;'>
+                <p style='color:white; margin:2px 0; font-size:16px;'>
                     Sleep: {row.sleep_hours} | Screen: {row.screen_time} | Stress: {row.stress_level} | Score: {row.wellness_score}
                 </p>
                 <p style='color:white; margin:2px 0;'>Mood: {row.mood}</p>
